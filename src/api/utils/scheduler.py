@@ -17,10 +17,9 @@ import redis
 import json
 from enum import Enum
 
-from ..utils.config import get_settings
+from ..utils.config import settings
 from ..utils.logger import get_logger
 
-settings = get_settings()
 logger = get_logger(__name__)
 
 

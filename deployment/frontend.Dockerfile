@@ -1,20 +1,40 @@
-# Multi-stage build for React frontend
+# Multi-stage build for React frontend with Vite
 FROM node:18-alpine as builder
 
 # Set working directory
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY src/frontend/package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install dependencies (including dev dependencies for build)
+RUN npm ci
 
 # Copy source code
-COPY . .
+COPY src/frontend/ .
 
 # Build the application
 RUN npm run build
+
+# Development stage
+FROM node:18-alpine as development
+
+WORKDIR /app
+
+# Copy package files
+COPY src/frontend/package*.json ./
+
+# Install all dependencies (including dev)
+RUN npm ci
+
+# Copy source code
+COPY src/frontend/ .
+
+# Expose port
+EXPOSE 3000
+
+# Start development server
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 
 # Production stage with nginx
 FROM nginx:alpine

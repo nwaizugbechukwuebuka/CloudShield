@@ -18,6 +18,33 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
+    # Email Configuration
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "localhost")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USERNAME: Optional[str] = os.getenv("SMTP_USERNAME")
+    SMTP_PASSWORD: Optional[str] = os.getenv("SMTP_PASSWORD")
+    SMTP_USE_TLS: bool = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
+    FROM_EMAIL: str = os.getenv("FROM_EMAIL", "noreply@cloudshield.com")
+    FROM_NAME: str = os.getenv("FROM_NAME", "CloudShield Security")
+    SUPPORT_EMAIL: Optional[str] = os.getenv("SUPPORT_EMAIL")
+    
+    # Security Settings
+    ENABLE_IP_BLOCKING: bool = os.getenv("ENABLE_IP_BLOCKING", "true").lower() == "true"
+    ENABLE_PATTERN_DETECTION: bool = os.getenv("ENABLE_PATTERN_DETECTION", "true").lower() == "true"
+    RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "100"))
+    AUTH_RATE_LIMIT: int = int(os.getenv("AUTH_RATE_LIMIT", "10"))
+    
+    # Secrets Management
+    SECRET_BACKEND: str = os.getenv("SECRET_BACKEND", "local_env")  # aws_secrets_manager, hashicorp_vault, azure_key_vault, local_env
+    AWS_REGION: str = os.getenv("AWS_REGION", "us-east-1")
+    VAULT_ADDR: str = os.getenv("VAULT_ADDR", "http://localhost:8200")
+    VAULT_MOUNT_POINT: str = os.getenv("VAULT_MOUNT_POINT", "secret")
+    VAULT_SECRET_PATH: str = os.getenv("VAULT_SECRET_PATH", "cloudshield")
+    AZURE_KEY_VAULT_URL: str = os.getenv("AZURE_KEY_VAULT_URL", "")
+    
+    # Frontend URL
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./cloudshield.db")
     
@@ -63,8 +90,25 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
     SMTP_FROM_EMAIL: str = os.getenv("SMTP_FROM_EMAIL", "noreply@cloudshield.com")
     
+    # Alert Configuration
+    ALERT_FROM_EMAIL: str = os.getenv("ALERT_FROM_EMAIL", "alerts@cloudshield.security")
+    ALERT_EMAIL_ENABLED: bool = os.getenv("ALERT_EMAIL_ENABLED", "true").lower() == "true"
+    ALERT_SLACK_ENABLED: bool = os.getenv("ALERT_SLACK_ENABLED", "false").lower() == "true"
+    ALERT_TEAMS_ENABLED: bool = os.getenv("ALERT_TEAMS_ENABLED", "false").lower() == "true"
+    
     # Slack Webhook (for alerts)
     SLACK_WEBHOOK_URL: str = os.getenv("SLACK_WEBHOOK_URL", "")
+    SLACK_BOT_TOKEN: str = os.getenv("SLACK_BOT_TOKEN", "")
+    SLACK_ALERT_CHANNEL: str = os.getenv("SLACK_ALERT_CHANNEL", "#security-alerts")
+    TEAMS_WEBHOOK_URL: str = os.getenv("TEAMS_WEBHOOK_URL", "")
+    
+    # Email Templates
+    EMAIL_TEMPLATE_ALERT: str = os.getenv("EMAIL_TEMPLATE_ALERT", "default_alert_template")
+    EMAIL_TEMPLATE_DIGEST: str = os.getenv("EMAIL_TEMPLATE_DIGEST", "default_digest_template")
+    
+    # Generic Webhook
+    WEBHOOK_URL: str = os.getenv("WEBHOOK_URL", "")
+    WEBHOOK_SECRET: str = os.getenv("WEBHOOK_SECRET", "")
     
     # Scanning Configuration
     DEFAULT_SCAN_FREQUENCY_HOURS: int = 24
@@ -163,3 +207,12 @@ def get_oauth_config(provider: str) -> dict:
     }
     
     return configs.get(provider, {})
+
+
+# Global settings instance
+settings = Settings()
+
+
+def get_settings() -> Settings:
+    """Get global settings instance"""
+    return settings

@@ -17,11 +17,11 @@ from dataclasses import dataclass
 from enum import Enum
 import urllib.parse
 
-from .common import BaseScanner, ScanResult, SecurityFinding, RiskLevel
-from ..api.utils.config import get_settings
+from .common import BaseScanner, ScanResult
+from ..api.models.findings import RiskLevel, FindingType
+from ..api.utils.config import settings
 from ..api.utils.logger import get_logger
 
-settings = get_settings()
 logger = get_logger(__name__)
 
 
@@ -118,7 +118,7 @@ class NotionScanner(BaseScanner):
     """
     
     def __init__(self):
-        super().__init__()
+        super().__init__("notion")
         self.version = "1.5.0"
         self.base_url = "https://api.notion.com/v1"
         self.session = None
@@ -138,6 +138,123 @@ class NotionScanner(BaseScanner):
             "ISO27001": ["A.9", "A.10", "A.13"],
             "NIST": ["AC", "AU", "SC"]
         }
+    
+    async def authenticate(self, access_token: str, **kwargs) -> bool:
+        """Authenticate with Notion API using integration token"""
+        try:
+            self.integration_token = access_token
+            
+            # Test authentication by making a simple API call
+            import aiohttp
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Notion-Version": "2022-06-28",
+                "Content-Type": "application/json"
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{self.base_url}/users", headers=headers) as response:
+                    if response.status == 200:
+                        logger.info("Successfully authenticated with Notion API")
+                        return True
+                    else:
+                        logger.error(f"Authentication failed: {response.status}")
+                        return False
+        except Exception as e:
+            logger.error(f"Authentication error: {str(e)}")
+            return False
+
+    async def scan_users(self, **kwargs):
+        """Scan for user-related security issues"""
+        try:
+            users = await self._get_workspace_users()
+            
+            for user in users:
+                # Check for guest users with excessive access
+                if user.get('type') == 'person' and user.get('person', {}).get('email', '').endswith('@guest.notion.so'):
+                    yield ScanResult(
+                        title="Guest User with Workspace Access",
+                        description=f"Guest user {user.get('name', 'Unknown')} has access to the workspace",
+                        finding_type=FindingType.ACCESS_CONTROL,
+                        evidence={"user": user},
+                        resource_id=user.get('id', ''),
+                        resource_name=user.get('name', 'Unknown'),
+                        resource_type='user',
+                        remediation_steps="Review guest user permissions and consider removing unnecessary access"
+                    )
+        except Exception as e:
+            logger.error(f"Error scanning users: {str(e)}")
+
+    async def scan_permissions(self, **kwargs):
+        """Scan for permission-related issues"""
+        try:
+            pages = await self._get_all_pages()
+            
+            for page in pages:
+                # Check for overly permissive sharing
+                if page.get('public_url'):
+                    yield ScanResult(
+                        title="Public Page Detected",
+                        description=f"Page '{page.get('title', 'Unknown')}' is publicly accessible",
+                        finding_type=FindingType.DATA_EXPOSURE,
+                        evidence={"page": page},
+                        resource_id=page.get('id', ''),
+                        resource_name=page.get('title', 'Unknown'),
+                        resource_type='page',
+                        remediation_steps="Review public sharing settings and restrict access if sensitive"
+                    )
+        except Exception as e:
+            logger.error(f"Error scanning permissions: {str(e)}")
+
+    async def scan_data_sharing(self, **kwargs):
+        """Scan for data sharing and access issues"""
+        try:
+            pages = await self._get_all_pages()
+            
+            for page in pages:
+                # Check for sensitive content patterns
+                content = page.get('content', '')
+                if 'sensitive' in content.lower():
+                    yield ScanResult(
+                        title="Potential Sensitive Data",
+                        description=f"Sensitive content detected in page '{page.get('title', 'Unknown')}'",
+                        finding_type=FindingType.DATA_EXPOSURE,
+                        evidence={"page": page},
+                        resource_id=page.get('id', ''),
+                        resource_name=page.get('title', 'Unknown'),
+                        resource_type='page',
+                        remediation_steps="Review content and implement appropriate access controls"
+                    )
+        except Exception as e:
+            logger.error(f"Error scanning data sharing: {str(e)}")
+
+    async def _get_workspace_users(self):
+        """Get all workspace users"""
+        try:
+            import aiohttp
+            headers = {
+                "Authorization": f"Bearer {self.integration_token}",
+                "Notion-Version": "2022-06-28"
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{self.base_url}/users", headers=headers) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data.get('results', [])
+                    return []
+        except Exception as e:
+            logger.error(f"Error fetching users: {str(e)}")
+            return []
+
+    async def _get_all_pages(self):
+        """Get all accessible pages"""
+        try:
+            # Simplified implementation
+            return []
+        except Exception as e:
+            logger.error(f"Error fetching pages: {str(e)}")
+            return []
     
     def _initialize_security_checks(self) -> Dict[str, Dict]:
         """Initialize security check configurations"""
@@ -400,7 +517,7 @@ class NotionScanner(BaseScanner):
         finally:
             await self.cleanup_session()
     
-    async def _scan_workspace_security(self) -> List[SecurityFinding]:
+    async def _scan_workspace_security(self) -> List[ScanResult]:
         """Scan workspace-level security configuration"""
         findings = []
         
@@ -416,7 +533,7 @@ class NotionScanner(BaseScanner):
             
             # Check for excessive admin privileges
             if len(admin_users) > 3:
-                findings.append(SecurityFinding(
+                findings.append(ScanResult(
                     title="Excessive Workspace Administrators",
                     description=f"{len(admin_users)} users have workspace owner privileges",
                     severity=RiskLevel.MEDIUM,
@@ -437,7 +554,7 @@ class NotionScanner(BaseScanner):
                         inactive_users.append(user)
                 
                 if len(inactive_users) > 5:
-                    findings.append(SecurityFinding(
+                    findings.append(ScanResult(
                         title="Inactive Workspace Users",
                         description=f"{len(inactive_users)} users haven't accessed the workspace in 90+ days",
                         severity=RiskLevel.LOW,
@@ -450,7 +567,7 @@ class NotionScanner(BaseScanner):
             
             # Check guest user access
             if guest_users:
-                findings.append(SecurityFinding(
+                findings.append(ScanResult(
                     title="Guest User Access Present",
                     description=f"{len(guest_users)} guest users have access to the workspace",
                     severity=RiskLevel.MEDIUM,
@@ -463,7 +580,7 @@ class NotionScanner(BaseScanner):
             
         except Exception as e:
             logger.error(f"Workspace security scan failed: {str(e)}")
-            findings.append(SecurityFinding(
+            findings.append(ScanResult(
                 title="Workspace Scan Error",
                 description=f"Failed to complete workspace security scan: {str(e)}",
                 severity=RiskLevel.LOW,
@@ -473,7 +590,7 @@ class NotionScanner(BaseScanner):
         
         return findings
     
-    async def _scan_content_security(self) -> List[SecurityFinding]:
+    async def _scan_content_security(self) -> List[ScanResult]:
         """Scan pages and databases for security issues"""
         findings = []
         
@@ -487,7 +604,7 @@ class NotionScanner(BaseScanner):
             # Check for public pages
             public_pages = [p for p in pages if getattr(p, 'public', False)]
             if public_pages:
-                findings.append(SecurityFinding(
+                findings.append(ScanResult(
                     title="Public Pages Detected",
                     description=f"{len(public_pages)} pages are publicly accessible",
                     severity=RiskLevel.HIGH,
@@ -501,7 +618,7 @@ class NotionScanner(BaseScanner):
             # Check for public databases
             public_databases = [d for d in databases if getattr(d, 'public', False)]
             if public_databases:
-                findings.append(SecurityFinding(
+                findings.append(ScanResult(
                     title="Public Databases Detected",
                     description=f"{len(public_databases)} databases are publicly accessible",
                     severity=RiskLevel.HIGH,
@@ -522,7 +639,7 @@ class NotionScanner(BaseScanner):
                         overshared_content.append(content)
             
             if overshared_content:
-                findings.append(SecurityFinding(
+                findings.append(ScanResult(
                     title="Overshared Content Detected",
                     description=f"{len(overshared_content)} items are shared with many users",
                     severity=RiskLevel.MEDIUM,
@@ -541,7 +658,7 @@ class NotionScanner(BaseScanner):
                         archived_with_permissions.append(content)
             
             if archived_with_permissions:
-                findings.append(SecurityFinding(
+                findings.append(ScanResult(
                     title="Archived Content with Active Permissions",
                     description=f"{len(archived_with_permissions)} archived items still have active sharing permissions",
                     severity=RiskLevel.LOW,
@@ -554,7 +671,7 @@ class NotionScanner(BaseScanner):
             
         except Exception as e:
             logger.error(f"Content security scan failed: {str(e)}")
-            findings.append(SecurityFinding(
+            findings.append(ScanResult(
                 title="Content Scan Error",
                 description=f"Failed to complete content security scan: {str(e)}",
                 severity=RiskLevel.LOW,
@@ -564,7 +681,7 @@ class NotionScanner(BaseScanner):
         
         return findings
     
-    async def _scan_user_permissions(self) -> List[SecurityFinding]:
+    async def _scan_user_permissions(self) -> List[ScanResult]:
         """Scan user permission assignments"""
         findings = []
         
@@ -593,7 +710,7 @@ class NotionScanner(BaseScanner):
                     overprivileged_users.append(user_id)
             
             if overprivileged_users:
-                findings.append(SecurityFinding(
+                findings.append(ScanResult(
                     title="Overprivileged Users Detected",
                     description=f"{len(overprivileged_users)} users have excessive content permissions",
                     severity=RiskLevel.MEDIUM,
@@ -613,7 +730,7 @@ class NotionScanner(BaseScanner):
                         external_privileged.append(user)
             
             if external_privileged:
-                findings.append(SecurityFinding(
+                findings.append(ScanResult(
                     title="External Users with High Privileges",
                     description=f"{len(external_privileged)} external users have extensive permissions",
                     severity=RiskLevel.MEDIUM,
@@ -626,7 +743,7 @@ class NotionScanner(BaseScanner):
             
         except Exception as e:
             logger.error(f"User permissions scan failed: {str(e)}")
-            findings.append(SecurityFinding(
+            findings.append(ScanResult(
                 title="User Permissions Scan Error",
                 description=f"Failed to complete user permissions scan: {str(e)}",
                 severity=RiskLevel.LOW,
@@ -636,7 +753,7 @@ class NotionScanner(BaseScanner):
         
         return findings
     
-    async def _scan_integration_security(self) -> List[SecurityFinding]:
+    async def _scan_integration_security(self) -> List[ScanResult]:
         """Scan integration security configuration"""
         findings = []
         
@@ -647,7 +764,7 @@ class NotionScanner(BaseScanner):
             # This would be a limited scan based on available data
             
             # Check integration token permissions (basic check)
-            findings.append(SecurityFinding(
+            findings.append(ScanResult(
                 title="Integration Security Review Required",
                 description="Integration permissions and security should be reviewed manually",
                 severity=RiskLevel.LOW,
@@ -660,7 +777,7 @@ class NotionScanner(BaseScanner):
             
         except Exception as e:
             logger.error(f"Integration security scan failed: {str(e)}")
-            findings.append(SecurityFinding(
+            findings.append(ScanResult(
                 title="Integration Scan Error",
                 description=f"Failed to complete integration security scan: {str(e)}",
                 severity=RiskLevel.LOW,
@@ -670,7 +787,7 @@ class NotionScanner(BaseScanner):
         
         return findings
     
-    async def _scan_sensitive_data(self) -> List[SecurityFinding]:
+    async def _scan_sensitive_data(self) -> List[ScanResult]:
         """Scan for sensitive data patterns in content"""
         findings = []
         
@@ -700,7 +817,7 @@ class NotionScanner(BaseScanner):
                                if any(pattern["severity"] == "CRITICAL" for pattern in p["patterns"])]
                 
                 if critical_pages:
-                    findings.append(SecurityFinding(
+                    findings.append(ScanResult(
                         title="Critical Sensitive Data Detected",
                         description=f"{len(critical_pages)} pages contain critical sensitive data (API keys, credentials)",
                         severity=RiskLevel.CRITICAL,
@@ -715,7 +832,7 @@ class NotionScanner(BaseScanner):
                                  if any(pattern["severity"] == "HIGH" for pattern in p["patterns"])]
                 
                 if high_risk_pages:
-                    findings.append(SecurityFinding(
+                    findings.append(ScanResult(
                         title="High-Risk Sensitive Data Detected",
                         description=f"{len(high_risk_pages)} pages contain high-risk sensitive data",
                         severity=RiskLevel.HIGH,
@@ -728,7 +845,7 @@ class NotionScanner(BaseScanner):
             
         except Exception as e:
             logger.error(f"Sensitive data scan failed: {str(e)}")
-            findings.append(SecurityFinding(
+            findings.append(ScanResult(
                 title="Sensitive Data Scan Error",
                 description=f"Failed to complete sensitive data scan: {str(e)}",
                 severity=RiskLevel.LOW,
@@ -907,7 +1024,7 @@ class NotionScanner(BaseScanner):
         
         return detected
     
-    def _count_by_severity(self, findings: List[SecurityFinding]) -> Dict[str, int]:
+    def _count_by_severity(self, findings: List[ScanResult]) -> Dict[str, int]:
         """Count findings by severity level"""
         counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
         

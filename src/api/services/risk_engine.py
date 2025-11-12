@@ -15,7 +15,6 @@ class RiskScoringEngine:
     
     # Base risk scores for different finding types (0-100 scale)
     BASE_RISK_SCORES = {
-        FindingType.CRITICAL: 95.0,
         FindingType.MISCONFIGURATION: 60.0,
         FindingType.INACTIVE_USER: 40.0,
         FindingType.PUBLIC_SHARE: 80.0,

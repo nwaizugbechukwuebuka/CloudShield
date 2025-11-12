@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy import select, update, delete, and_, or_, desc
 
-from ..database import get_async_db
+from ..database import get_db
 from ..models.findings import Finding, Alert, AlertStatus, RiskLevel
 from ..models.user import User
 from ..models.integration import Integration
@@ -393,7 +393,7 @@ class CloudShieldAlertService:
                           metadata: Optional[Dict] = None) -> Optional[Alert]:
         """Create a new security alert"""
         try:
-            async with get_async_db() as db:
+            async with get_db() as db:
                 # Check if similar alert already exists (deduplication)
                 existing_alert = await self._check_duplicate_alert(
                     db, finding_id, alert_type, title
@@ -873,7 +873,7 @@ class CloudShieldAlertService:
             if task_id:
                 # Store escalation task ID in alert metadata
                 alert.metadata["escalation_task_id"] = task_id
-                async with get_async_db() as db:
+                async with get_db() as db:
                     await db.commit()
                 
                 logger.info(f"Scheduled escalation for alert {alert.id} in {delay_seconds} seconds")
@@ -884,7 +884,7 @@ class CloudShieldAlertService:
     async def escalate_alert(self, alert_id: str) -> bool:
         """Escalate an alert to higher severity"""
         try:
-            async with get_async_db() as db:
+            async with get_db() as db:
                 result = await db.execute(
                     select(Alert)
                     .options(
@@ -969,7 +969,7 @@ class CloudShieldAlertService:
     async def resolve_alert(self, alert_id: str, resolution_notes: Optional[str] = None) -> bool:
         """Mark an alert as resolved"""
         try:
-            async with get_async_db() as db:
+            async with get_db() as db:
                 result = await db.execute(
                     select(Alert).where(Alert.id == alert_id)
                 )
@@ -1005,7 +1005,7 @@ class CloudShieldAlertService:
                                  integration_id: Optional[str] = None) -> Dict:
         """Get alert statistics for the specified period"""
         try:
-            async with get_async_db() as db:
+            async with get_db() as db:
                 cutoff_date = datetime.utcnow() - timedelta(days=days)
                 
                 # Base query
@@ -1071,7 +1071,7 @@ class CloudShieldAlertService:
                                   format_type: str = "html") -> Optional[str]:
         """Generate a comprehensive alert report"""
         try:
-            async with get_async_db() as db:
+            async with get_db() as db:
                 # Get alerts in date range
                 result = await db.execute(
                     select(Alert)

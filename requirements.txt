@@ -4,6 +4,8 @@ uvicorn==0.24.0
 gunicorn==21.2.0
 python-multipart==0.0.6
 jinja2==3.1.2
+pydantic==2.5.0
+pydantic-settings==2.1.0
 
 # Database
 sqlalchemy==2.0.23
@@ -12,19 +14,25 @@ psycopg2-binary==2.9.9
 redis==5.0.1
 asyncpg==0.29.0
 
-# Authentication & OAuth
+# Authentication & Security
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 python-decouple==3.8
 httpx==0.25.2
 authlib==1.2.1
+cryptography==41.0.7
+secrets==3.3.0
 
-# Background Tasks
+# Email Services
+email-validator==2.1.0
+aiosmtplib==3.0.1
+
+# Background Tasks & Queue
 celery==5.3.4
 flower==2.0.1
 kombu==5.3.4
 
-# API Integrations
+# API Integrations - Google
 google-api-python-client==2.108.0
 google-auth-httplib2==0.1.1
 google-auth-oauthlib==1.1.0
@@ -89,10 +97,9 @@ cryptography==41.0.8
 bcrypt==4.1.2
 PyJWT==2.8.0
 
-# File Handling & Compression
-pathlib==1.0.1
-gzip-reader==0.1.0
-zipfile36==0.1.3
+# File Handling & Data Processing
+aiofiles==23.2.1
+python-dateutil==2.8.2
 
 # HTTP Clients & Networking
 requests==2.31.0
@@ -100,21 +107,32 @@ urllib3==2.1.0
 certifi==2023.11.17
 
 # Async Extensions
-aiofiles==23.2.1
 aiosqlite==0.19.0
 aiodns==3.1.1
-
-# Configuration Management
-python-config==0.1.2
-configparser==6.0.0
 
 # Data Validation & Serialization
 marshmallow==3.20.2
 jsonschema==4.20.0
 
-# Caching
-python-memcached==1.62
-diskcache==5.6.3
+# Monitoring & Health Checks
+psutil==5.9.6
+prometheus-client==0.19.0
+
+# Security & Rate Limiting
+python-multipart==0.0.6
+python-magic==0.4.27
+
+# Development & Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+black==23.11.0
+isort==5.12.0
+mypy==1.7.1
+
+# Production Optimizations
+orjson==3.9.10
+python-json-logger==2.0.7
 
 # Logging Extensions
 colorlog==6.8.0

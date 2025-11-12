@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to {{ app_name }}</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .logo {
+            color: #2563eb;
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .welcome-text {
+            font-size: 24px;
+            color: #1f2937;
+            margin-bottom: 20px;
+        }
+        .content {
+            font-size: 16px;
+            line-height: 1.8;
+            color: #4b5563;
+        }
+        .cta-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+            color: white;
+            padding: 15px 30px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            margin: 30px 0;
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
+            transition: all 0.3s ease;
+        }
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+        }
+        .features {
+            background: #f8fafc;
+            padding: 30px;
+            border-radius: 8px;
+            margin: 30px 0;
+        }
+        .features h3 {
+            color: #1f2937;
+            margin-bottom: 20px;
+        }
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        .feature-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .feature-list li:last-child {
+            border-bottom: none;
+        }
+        .feature-list li::before {
+            content: "✓";
+            color: #10b981;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .footer {
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 1px solid #e5e7eb;
+            font-size: 14px;
+            color: #6b7280;
+            text-align: center;
+        }
+        .support-info {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 30px 0;
+        }
+        .support-info h4 {
+            color: #92400e;
+            margin: 0 0 10px 0;
+        }
+        .support-info p {
+            color: #92400e;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">🛡️ {{ app_name }}</div>
+            <h1 class="welcome-text">Welcome, {{ user_name }}!</h1>
+        </div>
+        
+        <div class="content">
+            <p>Thank you for joining {{ app_name }}, the comprehensive SaaS security configuration analyzer that helps organizations protect their cloud infrastructure and maintain compliance.</p>
+            
+            <p>Your account has been successfully created and you're now ready to start securing your SaaS applications with advanced threat detection and configuration analysis.</p>
+            
+            <div style="text-align: center;">
+                <a href="{{ login_url }}" class="cta-button">Access Your Dashboard</a>
+            </div>
+            
+            <div class="features">
+                <h3>🚀 What you can do with {{ app_name }}:</h3>
+                <ul class="feature-list">
+                    <li><strong>Multi-Platform Security Scanning</strong> - Connect and analyze Google Workspace, Microsoft 365, Slack, GitHub, and Notion</li>
+                    <li><strong>Real-Time Threat Detection</strong> - Continuous monitoring for security misconfigurations and vulnerabilities</li>
+                    <li><strong>Compliance Reporting</strong> - Automated compliance checks for SOC 2, ISO 27001, GDPR, and more</li>
+                    <li><strong>Risk Prioritization</strong> - AI-powered risk scoring to focus on critical security issues</li>
+                    <li><strong>Integration Management</strong> - Secure OAuth connections with comprehensive permission controls</li>
+                    <li><strong>Custom Alerts</strong> - Intelligent notifications for security events and policy violations</li>
+                    <li><strong>Executive Dashboards</strong> - Beautiful visualizations and reports for stakeholders</li>
+                </ul>
+            </div>
+            
+            <h3>🎯 Getting Started:</h3>
+            <ol>
+                <li><strong>Log in to your account</strong> using the button above</li>
+                <li><strong>Connect your first integration</strong> - Start with your most critical SaaS platform</li>
+                <li><strong>Run your first security scan</strong> - Get immediate insights into your security posture</li>
+                <li><strong>Review findings</strong> - Prioritize and remediate security issues</li>
+                <li><strong>Set up alerts</strong> - Configure notifications for ongoing monitoring</li>
+            </ol>
+            
+            <div class="support-info">
+                <h4>📞 Need Help Getting Started?</h4>
+                <p>Our security experts are here to help you maximize your security posture. Contact us at <strong>{{ support_email }}</strong> for personalized onboarding assistance.</p>
+            </div>
+            
+            <p><strong>Security Best Practices:</strong></p>
+            <ul>
+                <li>Enable multi-factor authentication for your {{ app_name }} account</li>
+                <li>Review integration permissions regularly</li>
+                <li>Set up alert notifications for your security team</li>
+                <li>Schedule regular security scans for all connected platforms</li>
+            </ul>
+        </div>
+        
+        <div class="footer">
+            <p><strong>{{ app_name }}</strong> - Enterprise-Grade SaaS Security Platform</p>
+            <p>This email was sent to {{ user_email }}. If you didn't create this account, please contact us immediately at {{ support_email }}.</p>
+            <p>© 2024 {{ app_name }}. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>

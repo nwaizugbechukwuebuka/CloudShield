@@ -1,0 +1,186 @@
+# Prometheus Alert Rules for CloudShield
+
+groups:
+  - name: cloudshield_api_alerts
+    interval: 30s
+    rules:
+      # High error rate
+      - alert: HighAPIErrorRate
+        expr: |
+          rate(cloudshield_http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "High API error rate detected"
+          description: "API error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+      
+      # Slow API responses
+      - alert: SlowAPIResponses
+        expr: |
+          histogram_quantile(0.95, 
+            rate(cloudshield_http_request_duration_seconds_bucket[5m])
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "95th percentile API response time is high"
+          description: "95th percentile response time is {{ $value }}s (threshold: 2s)"
+      
+      # Service down
+      - alert: CloudShieldAPIDown
+        expr: up{job="cloudshield-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "CloudShield API is down"
+          description: "CloudShield API has been down for more than 2 minutes"
+  
+  - name: database_alerts
+    interval: 30s
+    rules:
+      # High database connection usage
+      - alert: HighDatabaseConnections
+        expr: cloudshield_db_connections_active > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "High database connection count"
+          description: "Active database connections: {{ $value }} (threshold: 80)"
+      
+      # Database query latency
+      - alert: SlowDatabaseQueries
+        expr: |
+          histogram_quantile(0.95,
+            rate(cloudshield_db_query_duration_seconds_bucket[5m])
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Database queries are slow"
+          description: "95th percentile query time is {{ $value }}s"
+      
+      # Database errors
+      - alert: DatabaseErrors
+        expr: rate(cloudshield_db_errors_total[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "Database errors detected"
+          description: "Database error rate: {{ $value }} errors/sec"
+  
+  - name: scanning_alerts
+    interval: 30s
+    rules:
+      # High scan failure rate
+      - alert: HighScanFailureRate
+        expr: |
+          rate(cloudshield_scans_total{status="error"}[10m]) /
+          rate(cloudshield_scans_total[10m]) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+          component: scanner
+        annotations:
+          summary: "High security scan failure rate"
+          description: "Scan failure rate is {{ $value | humanizePercentage }}"
+      
+      # Too many concurrent scans
+      - alert: TooManyConcurrentScans
+        expr: sum(cloudshield_active_scans) > 50
+        for: 10m
+        labels:
+          severity: warning
+          component: scanner
+        annotations:
+          summary: "Too many concurrent scans"
+          description: "Active scans: {{ $value }} (threshold: 50)"
+      
+      # Critical findings detected
+      - alert: CriticalFindingsDetected
+        expr: |
+          increase(cloudshield_findings_detected_total{risk_level="critical"}[1h]) > 10
+        for: 5m
+        labels:
+          severity: critical
+          component: scanner
+        annotations:
+          summary: "Multiple critical security findings detected"
+          description: "{{ $value }} critical findings in the last hour"
+  
+  - name: infrastructure_alerts
+    interval: 30s
+    rules:
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value | humanizePercentage }}"
+      
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: |
+          100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is {{ $value }}%"
+      
+      # Disk space running low
+      - alert: DiskSpaceLow
+        expr: |
+          (1 - (node_filesystem_avail_bytes / node_filesystem_size_bytes)) > 0.85
+        for: 15m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "Disk space running low"
+          description: "Disk usage is {{ $value | humanizePercentage }}"
+  
+  - name: celery_alerts
+    interval: 30s
+    rules:
+      # High task queue length
+      - alert: HighCeleryQueueLength
+        expr: cloudshield_celery_queue_length > 100
+        for: 10m
+        labels:
+          severity: warning
+          component: celery
+        annotations:
+          summary: "Celery queue is backed up"
+          description: "Queue length: {{ $value }} tasks (threshold: 100)"
+      
+      # Task failure rate
+      - alert: HighCeleryTaskFailureRate
+        expr: |
+          rate(cloudshield_celery_tasks_total{status="failure"}[10m]) /
+          rate(cloudshield_celery_tasks_total[10m]) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+          component: celery
+        annotations:
+          summary: "High Celery task failure rate"
+          description: "Task failure rate: {{ $value | humanizePercentage }}"

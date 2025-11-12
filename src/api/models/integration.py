@@ -51,6 +51,7 @@ class Integration(BaseModel):
     # Relationships
     user = relationship("User", back_populates="integrations")
     findings = relationship("Finding", back_populates="integration", cascade="all, delete-orphan")
+    scans = relationship("Scan", back_populates="integration", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<Integration {self.name} ({self.type.value})>"

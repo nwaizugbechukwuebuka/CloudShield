@@ -1,0 +1,290 @@
+name: CD Pipeline
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+# Prevent concurrent deployments
+concurrency:
+  group: cd-${{ github.ref }}-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Build and Push Docker Images
+  build-and-push:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    outputs:
+      image-tag: ${{ steps.meta-backend.outputs.tags }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata for backend
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/api
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+      
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deployment/Dockerfile
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Extract metadata for frontend
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+      
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deployment/frontend.Dockerfile
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  
+  # Deploy to Staging
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'staging'
+    environment:
+      name: staging
+      url: https://staging.cloudshield.io
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure kubectl
+        uses: azure/k8s-set-context@v3
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBE_CONFIG_STAGING }}
+      
+      - name: Deploy to Kubernetes
+        run: |
+          # Verify cluster connection
+          kubectl cluster-info
+          kubectl get nodes
+          
+          # Apply Kubernetes configurations
+          kubectl apply -f deployment/k8s/staging/ || { echo "Failed to apply Kubernetes configs"; exit 1; }
+          
+          # Update deployment images
+          kubectl set image deployment/cloudshield-api \
+            cloudshield-api=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/api:${{ github.sha }} \
+            -n cloudshield-staging || { echo "Failed to update API image"; exit 1; }
+          
+          kubectl set image deployment/cloudshield-frontend \
+            cloudshield-frontend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:${{ github.sha }} \
+            -n cloudshield-staging || { echo "Failed to update frontend image"; exit 1; }
+          
+          # Wait for rollout with timeout
+          kubectl rollout status deployment/cloudshield-api -n cloudshield-staging --timeout=5m || { echo "API rollout failed"; exit 1; }
+          kubectl rollout status deployment/cloudshield-frontend -n cloudshield-staging --timeout=5m || { echo "Frontend rollout failed"; exit 1; }
+      
+      - name: Run smoke tests
+        run: |
+          chmod +x ./scripts/smoke-tests.sh
+          ./scripts/smoke-tests.sh https://staging.cloudshield.io || {
+            echo "Smoke tests failed! Rolling back...";
+            kubectl rollout undo deployment/cloudshield-api -n cloudshield-staging;
+            kubectl rollout undo deployment/cloudshield-frontend -n cloudshield-staging;
+            exit 1;
+          }
+      
+      - name: Notify deployment
+        if: always()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "Staging deployment ${{ job.status }}",
+              "status": "${{ job.status }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+  
+  # Deploy to Production
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build-and-push, deploy-staging]
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.environment == 'production'
+    environment:
+      name: production
+      url: https://cloudshield.io
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure kubectl
+        uses: azure/k8s-set-context@v3
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBE_CONFIG_PRODUCTION }}
+      
+      - name: Deploy to Kubernetes (Blue-Green)
+        run: |
+          # Verify cluster connection
+          kubectl cluster-info
+          kubectl get nodes
+          
+          # Deploy to green environment
+          kubectl apply -f deployment/k8s/production/ || { echo "Failed to apply configs"; exit 1; }
+          
+          # Update green deployment images
+          kubectl set image deployment/cloudshield-api-green \
+            cloudshield-api=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/api:${{ github.sha }} \
+            -n cloudshield-production || { echo "Failed to update green API"; exit 1; }
+          
+          kubectl set image deployment/cloudshield-frontend-green \
+            cloudshield-frontend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:${{ github.sha }} \
+            -n cloudshield-production || { echo "Failed to update green frontend"; exit 1; }
+          
+          # Wait for rollout with timeout
+          kubectl rollout status deployment/cloudshield-api-green -n cloudshield-production --timeout=10m || {
+            echo "Green API rollout failed";
+            exit 1;
+          }
+          kubectl rollout status deployment/cloudshield-frontend-green -n cloudshield-production --timeout=10m || {
+            echo "Green frontend rollout failed";
+            exit 1;
+          }
+          
+          # Run health checks on green environment
+          chmod +x ./scripts/health-check.sh
+          ./scripts/health-check.sh https://green.cloudshield.io || {
+            echo "Green environment health check failed";
+            exit 1;
+          }
+          
+          # Switch traffic to green (blue-green cutover)
+          kubectl patch service cloudshield-api -n cloudshield-production \
+            -p '{"spec":{"selector":{"version":"green"}}}' || {
+            echo "Failed to switch API traffic to green";
+            exit 1;
+          }
+          kubectl patch service cloudshield-frontend -n cloudshield-production \
+            -p '{"spec":{"selector":{"version":"green"}}}' || {
+            echo "Failed to switch frontend traffic to green";
+            # Rollback API if frontend switch failed
+            kubectl patch service cloudshield-api -n cloudshield-production \
+              -p '{"spec":{"selector":{"version":"blue"}}}';
+            exit 1;
+          }
+      
+      - name: Database migrations
+        run: |
+          # Run migrations on green environment
+          kubectl exec deployment/cloudshield-api-green -n cloudshield-production -- \
+            alembic upgrade head || {
+            echo "Database migration failed! Rolling back...";
+            kubectl patch service cloudshield-api -n cloudshield-production \
+              -p '{"spec":{"selector":{"version":"blue"}}}';
+            kubectl patch service cloudshield-frontend -n cloudshield-production \
+              -p '{"spec":{"selector":{"version":"blue"}}}';
+            exit 1;
+          }
+      
+      - name: Verify deployment
+        run: |
+          chmod +x ./scripts/smoke-tests.sh
+          ./scripts/smoke-tests.sh https://cloudshield.io || {
+            echo "Production smoke tests failed! Initiating rollback...";
+            kubectl patch service cloudshield-api -n cloudshield-production \
+              -p '{"spec":{"selector":{"version":"blue"}}}';
+            kubectl patch service cloudshield-frontend -n cloudshield-production \
+              -p '{"spec":{"selector":{"version":"blue"}}}';
+            exit 1;
+          }
+      
+      - name: Tag blue deployment as stable
+        run: |
+          # After successful green deployment, tag current blue as stable backup
+          kubectl label deployment cloudshield-api-blue stable=true -n cloudshield-production --overwrite
+          kubectl label deployment cloudshield-frontend-blue stable=true -n cloudshield-production --overwrite
+      
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          kubectl patch service cloudshield-api -n cloudshield-production \
+            -p '{"spec":{"selector":{"version":"blue"}}}'
+          kubectl patch service cloudshield-frontend -n cloudshield-production \
+            -p '{"spec":{"selector":{"version":"blue"}}}'
+      
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+      
+      - name: Notify deployment
+        if: always()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "Production deployment ${{ job.status }}",
+              "status": "${{ job.status }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}

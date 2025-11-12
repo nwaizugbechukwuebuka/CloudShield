@@ -5,8 +5,8 @@ import httpx
 import secrets
 from typing import Optional, Dict, Any, Tuple
 from urllib.parse import urlencode
-from authlib.integrations.httpx_client import OAuth2Session
-from ..utils.config import get_oauth_config, settings
+from authlib.integrations.httpx_client import OAuth2Client
+from ..utils.config import settings, get_oauth_config
 from ..utils.logger import get_logger, security_logger
 
 logger = get_logger(__name__)

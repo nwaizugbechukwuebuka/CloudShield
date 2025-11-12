@@ -1,25 +1,75 @@
 version: '3.8'
 
 services:
+  # Frontend React Application
+  frontend:
+    build:
+      context: .
+      dockerfile: deployment/frontend.Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_WS_URL=ws://localhost:8000/ws
+      - NODE_ENV=development
+    volumes:
+      - ./src/frontend:/app/src
+      - /app/node_modules
+      - /app/dist
+    depends_on:
+      - backend
+    networks:
+      - cloudshield
+    command: npm run dev -- --host 0.0.0.0
+
+  # Backend FastAPI Application
+  backend:
+    build:
+      context: .
+      dockerfile: deployment/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://cloudshield:cloudshield_secret@db:5432/cloudshield
+      - REDIS_URL=redis://redis:6379
+      - SECRET_KEY=your-secret-key-here-please-change-in-production
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+      - JWT_SECRET=jwt-secret-key-change-in-production
+      - ENVIRONMENT=development
+    volumes:
+      - ./src:/app/src
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - cloudshield
+    restart: unless-stopped
+
   # PostgreSQL Database
   db:
-    image: postgres:15
+    image: postgres:15-alpine
     environment:
       POSTGRES_DB: cloudshield
       POSTGRES_USER: cloudshield
       POSTGRES_PASSWORD: cloudshield_secret
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./deployment/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
     ports:
       - "5432:5432"
+    networks:
+      - cloudshield
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cloudshield"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD-SHELL", "pg_isready -U cloudshield -d cloudshield"]
+      interval: 10s
+      timeout: 5s
       retries: 5
+    restart: unless-stopped
 
-  # Redis for Celery
+  # Redis for Celery and Caching
   redis:
     image: redis:7-alpine
     ports:
@@ -27,50 +77,39 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
+    networks:
+      - cloudshield
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
 
-  # FastAPI Backend
-  backend:
-    build:
-      context: .
-      dockerfile: ./deployment/Dockerfile
-    environment:
-      - DATABASE_URL=postgresql://cloudshield:cloudshield_secret@db:5432/cloudshield
-      - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=your-super-secret-key-change-in-production
-      - DEBUG=True
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-      - MICROSOFT_CLIENT_ID=${MICROSOFT_CLIENT_ID}
-      - MICROSOFT_CLIENT_SECRET=${MICROSOFT_CLIENT_SECRET}
-      - SLACK_CLIENT_ID=${SLACK_CLIENT_ID}
-      - SLACK_CLIENT_SECRET=${SLACK_CLIENT_SECRET}
-      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
-      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
-      - NOTION_CLIENT_ID=${NOTION_CLIENT_ID}
-      - NOTION_CLIENT_SECRET=${NOTION_CLIENT_SECRET}
-      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
-      - SMTP_USERNAME=${SMTP_USERNAME}
-      - SMTP_PASSWORD=${SMTP_PASSWORD}
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
     ports:
-      - "8000:8000"
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - "80:80"
+      - "443:443"
     volumes:
-      - ./src:/app/src
-    command: >
-      sh -c "
-        python -m alembic upgrade head &&
-        uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
-      "
+      - ./deployment/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - cloudshield
+    restart: unless-stopped
 
+networks:
+  cloudshield:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
   # Celery Worker
   celery_worker:
     build:
@@ -80,6 +119,7 @@ services:
       - DATABASE_URL=postgresql://cloudshield:cloudshield_secret@db:5432/cloudshield
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=your-super-secret-key-change-in-production
+      - ENVIRONMENT=development
     depends_on:
       db:
         condition: service_healthy
@@ -87,8 +127,10 @@ services:
         condition: service_healthy
     volumes:
       - ./src:/app/src
-    command: >
-      celery -A src.tasks worker --loglevel=info --concurrency=4
+    networks:
+      - cloudshield
+    command: celery -A src.tasks worker --loglevel=info --concurrency=4
+    restart: unless-stopped
 
   # Celery Beat Scheduler
   celery_beat:
@@ -99,6 +141,7 @@ services:
       - DATABASE_URL=postgresql://cloudshield:cloudshield_secret@db:5432/cloudshield
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=your-super-secret-key-change-in-production
+      - ENVIRONMENT=development
     depends_on:
       db:
         condition: service_healthy
@@ -106,8 +149,10 @@ services:
         condition: service_healthy
     volumes:
       - ./src:/app/src
-    command: >
-      celery -A src.tasks beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    networks:
+      - cloudshield
+    command: celery -A src.tasks beat --loglevel=info
+    restart: unless-stopped
 
   # Flower (Celery Monitoring)
   flower:
@@ -120,36 +165,7 @@ services:
       - "5555:5555"
     depends_on:
       - redis
-    command: >
-      celery -A src.tasks flower --port=5555
-
-  # React Frontend
-  frontend:
-    build:
-      context: ./src/frontend
-      dockerfile: ../../deployment/frontend.Dockerfile
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./src/frontend:/app
-      - /app/node_modules
-    environment:
-      - VITE_API_URL=http://localhost:8000
-    command: npm run dev
-
-  # Nginx Reverse Proxy
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./deployment/nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - backend
-      - frontend
+    networks:
+      - cloudshield
+    command: celery -A src.tasks flower --port=5555
     restart: unless-stopped
-
-volumes:
-  postgres_data:
-  redis_data:

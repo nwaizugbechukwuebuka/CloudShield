@@ -17,11 +17,11 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 
-from ..common import BaseScanner, ScanResult, SecurityFinding, RiskLevel
-from ...api.utils.config import get_settings
-from ...api.utils.logger import get_logger
+from .common import BaseScanner, ScanResult
+from ..api.models.findings import RiskLevel, FindingType
+from ..api.utils.config import settings
+from ..api.utils.logger import get_logger
 
-settings = get_settings()
 logger = get_logger(__name__)
 
 
@@ -365,7 +365,7 @@ class Microsoft365Scanner(BaseScanner):
         finally:
             await self.cleanup_session()
     
-    async def _scan_azure_ad(self) -> List[SecurityFinding]:
+    async def _scan_azure_ad(self) -> List[ScanResult]:
         """Scan Azure Active Directory security configuration"""
         findings = []
         
@@ -405,7 +405,7 @@ class Microsoft365Scanner(BaseScanner):
             
         except Exception as e:
             logger.error(f"Azure AD scan failed: {str(e)}")
-            findings.append(SecurityFinding(
+            findings.append(ScanResult(
                 title="Azure AD Scan Error",
                 description=f"Failed to complete Azure AD security scan: {str(e)}",
                 severity=RiskLevel.MEDIUM,
@@ -416,7 +416,7 @@ class Microsoft365Scanner(BaseScanner):
         
         return findings
     
-    async def _check_mfa_enforcement(self) -> List[SecurityFinding]:
+    async def _check_mfa_enforcement(self) -> List[ScanResult]:
         """Check multi-factor authentication enforcement"""
         findings = []
         
@@ -437,7 +437,7 @@ class Microsoft365Scanner(BaseScanner):
                         mfa_coverage = (mfa_enabled_users / total_users) * 100
                         
                         if mfa_coverage < 90:
-                            findings.append(SecurityFinding(
+                            findings.append(ScanResult(
                                 title="Insufficient MFA Coverage",
                                 description=f"Only {mfa_coverage:.1f}% of users have MFA enabled. "
                                            f"Consider requiring MFA for all users.",
@@ -453,7 +453,7 @@ class Microsoft365Scanner(BaseScanner):
                     users_without_mfa = [u for u in users if not u.get("isMfaRegistered", False)]
                     
                     if len(users_without_mfa) > 10:  # Threshold for reporting
-                        findings.append(SecurityFinding(
+                        findings.append(ScanResult(
                             title="Users Without MFA Registration",
                             description=f"{len(users_without_mfa)} users do not have MFA registered",
                             severity=RiskLevel.MEDIUM,
@@ -465,7 +465,7 @@ class Microsoft365Scanner(BaseScanner):
                 
         except Exception as e:
             logger.error(f"MFA enforcement check failed: {str(e)}")
-            findings.append(SecurityFinding(
+            findings.append(ScanResult(
                 title="MFA Check Failed",
                 description=f"Unable to verify MFA enforcement: {str(e)}",
                 severity=RiskLevel.MEDIUM,
@@ -475,7 +475,7 @@ class Microsoft365Scanner(BaseScanner):
         
         return findings
     
-    async def _check_conditional_access(self) -> List[SecurityFinding]:
+    async def _check_conditional_access(self) -> List[ScanResult]:
         """Check conditional access policy configuration"""
         findings = []
         
@@ -519,7 +519,7 @@ class Microsoft365Scanner(BaseScanner):
                     
                     # Generate findings for missing conditions
                     if not required_conditions["mfa_for_admins"]:
-                        findings.append(SecurityFinding(
+                        findings.append(ScanResult(
                             title="Missing Admin MFA Policy",
                             description="No conditional access policy requires MFA for administrative roles",
                             severity=RiskLevel.CRITICAL,
@@ -531,7 +531,7 @@ class Microsoft365Scanner(BaseScanner):
                         ))
                     
                     if not required_conditions["block_legacy_auth"]:
-                        findings.append(SecurityFinding(
+                        findings.append(ScanResult(
                             title="Legacy Authentication Not Blocked",
                             description="Legacy authentication protocols are not blocked by conditional access",
                             severity=RiskLevel.HIGH,
@@ -543,7 +543,7 @@ class Microsoft365Scanner(BaseScanner):
                         ))
                     
                     if len(enabled_policies) == 0:
-                        findings.append(SecurityFinding(
+                        findings.append(ScanResult(
                             title="No Conditional Access Policies",
                             description="No conditional access policies are configured and enabled",
                             severity=RiskLevel.CRITICAL,
@@ -556,7 +556,7 @@ class Microsoft365Scanner(BaseScanner):
                 
         except Exception as e:
             logger.error(f"Conditional access check failed: {str(e)}")
-            findings.append(SecurityFinding(
+            findings.append(ScanResult(
                 title="Conditional Access Check Failed",
                 description=f"Unable to verify conditional access policies: {str(e)}",
                 severity=RiskLevel.MEDIUM,
@@ -566,7 +566,7 @@ class Microsoft365Scanner(BaseScanner):
         
         return findings
     
-    async def _check_privileged_roles(self) -> List[SecurityFinding]:
+    async def _check_privileged_roles(self) -> List[ScanResult]:
         """Check privileged role assignments and usage"""
         findings = []
         
@@ -596,7 +596,7 @@ class Microsoft365Scanner(BaseScanner):
                                     members = members_data.get("value", [])
                                     
                                     if len(members) > 5:  # Threshold for too many privileged users
-                                        findings.append(SecurityFinding(
+                                        findings.append(ScanResult(
                                             title=f"Excessive {role.get('displayName')} Assignments",
                                             description=f"{len(members)} users assigned to {role.get('displayName')} role",
                                             severity=RiskLevel.MEDIUM,
@@ -614,7 +614,7 @@ class Microsoft365Scanner(BaseScanner):
                                     # Check for service accounts in privileged roles
                                     service_accounts = [m for m in members if "#EXT#" in m.get("userPrincipalName", "")]
                                     if service_accounts:
-                                        findings.append(SecurityFinding(
+                                        findings.append(ScanResult(
                                             title="External Users in Privileged Roles",
                                             description=f"{len(service_accounts)} external users have {role.get('displayName')} privileges",
                                             severity=RiskLevel.HIGH,
@@ -631,7 +631,7 @@ class Microsoft365Scanner(BaseScanner):
         
         except Exception as e:
             logger.error(f"Privileged roles check failed: {str(e)}")
-            findings.append(SecurityFinding(
+            findings.append(ScanResult(
                 title="Privileged Roles Check Failed",
                 description=f"Unable to verify privileged role assignments: {str(e)}",
                 severity=RiskLevel.MEDIUM,
@@ -641,7 +641,7 @@ class Microsoft365Scanner(BaseScanner):
         
         return findings
     
-    async def _check_guest_access(self) -> List[SecurityFinding]:
+    async def _check_guest_access(self) -> List[ScanResult]:
         """Check guest user access configuration"""
         findings = []
         
@@ -671,7 +671,7 @@ class Microsoft365Scanner(BaseScanner):
                                 inactive_guests.append(guest)
                         
                         if len(inactive_guests) > 0:
-                            findings.append(SecurityFinding(
+                            findings.append(ScanResult(
                                 title="Inactive Guest User Accounts",
                                 description=f"{len(inactive_guests)} guest accounts haven't been used in 90+ days",
                                 severity=RiskLevel.MEDIUM,
@@ -695,7 +695,7 @@ class Microsoft365Scanner(BaseScanner):
                                 guest_restrictions = settings_data.get("allowedToUseSSPR", True)
                                 
                                 if not guest_restrictions:
-                                    findings.append(SecurityFinding(
+                                    findings.append(ScanResult(
                                         title="Unrestricted Guest Access",
                                         description="Guest users have unrestricted access to directory information",
                                         severity=RiskLevel.MEDIUM,
@@ -708,7 +708,7 @@ class Microsoft365Scanner(BaseScanner):
         
         except Exception as e:
             logger.error(f"Guest access check failed: {str(e)}")
-            findings.append(SecurityFinding(
+            findings.append(ScanResult(
                 title="Guest Access Check Failed",
                 description=f"Unable to verify guest access configuration: {str(e)}",
                 severity=RiskLevel.LOW,
@@ -718,7 +718,7 @@ class Microsoft365Scanner(BaseScanner):
         
         return findings
     
-    async def _check_identity_protection(self) -> List[SecurityFinding]:
+    async def _check_identity_protection(self) -> List[ScanResult]:
         """Check identity protection settings"""
         findings = []
         
@@ -732,7 +732,7 @@ class Microsoft365Scanner(BaseScanner):
                     policies = data.get("value", [])
                     
                     if not policies:
-                        findings.append(SecurityFinding(
+                        findings.append(ScanResult(
                             title="Identity Protection Not Configured",
                             description="No identity protection policies are configured",
                             severity=RiskLevel.HIGH,
@@ -754,7 +754,7 @@ class Microsoft365Scanner(BaseScanner):
                                 signin_risk_policy = policy
                         
                         if not user_risk_policy or user_risk_policy.get("state") != "enabled":
-                            findings.append(SecurityFinding(
+                            findings.append(ScanResult(
                                 title="User Risk Policy Not Enabled",
                                 description="Identity protection user risk policy is not enabled",
                                 severity=RiskLevel.MEDIUM,
@@ -766,7 +766,7 @@ class Microsoft365Scanner(BaseScanner):
                             ))
                         
                         if not signin_risk_policy or signin_risk_policy.get("state") != "enabled":
-                            findings.append(SecurityFinding(
+                            findings.append(ScanResult(
                                 title="Sign-in Risk Policy Not Enabled",
                                 description="Identity protection sign-in risk policy is not enabled",
                                 severity=RiskLevel.MEDIUM,
@@ -783,7 +783,7 @@ class Microsoft365Scanner(BaseScanner):
         
         return findings
     
-    async def _check_password_policies(self) -> List[SecurityFinding]:
+    async def _check_password_policies(self) -> List[ScanResult]:
         """Check password policy configuration"""
         findings = []
         
@@ -802,7 +802,7 @@ class Microsoft365Scanner(BaseScanner):
                             # Note: Detailed password policies require additional Graph API calls
                             # This is a simplified check
                             
-                            findings.append(SecurityFinding(
+                            findings.append(ScanResult(
                                 title="Password Policy Review Required",
                                 description="Password policies should be reviewed for complexity requirements",
                                 severity=RiskLevel.LOW,
@@ -818,7 +818,7 @@ class Microsoft365Scanner(BaseScanner):
         
         return findings
     
-    async def _check_application_security(self) -> List[SecurityFinding]:
+    async def _check_application_security(self) -> List[ScanResult]:
         """Check application registrations and permissions"""
         findings = []
         
@@ -852,7 +852,7 @@ class Microsoft365Scanner(BaseScanner):
                                     risky_permissions.append("Multiple high permissions")
                         
                         if risky_permissions:
-                            findings.append(SecurityFinding(
+                            findings.append(ScanResult(
                                 title=f"High-Risk Application Permissions: {app_name}",
                                 description=f"Application has excessive permissions: {', '.join(risky_permissions)}",
                                 severity=RiskLevel.MEDIUM,
@@ -878,7 +878,7 @@ class Microsoft365Scanner(BaseScanner):
                         ]
                         
                         if expired_secrets:
-                            findings.append(SecurityFinding(
+                            findings.append(ScanResult(
                                 title=f"Expired Application Secrets: {app_name}",
                                 description=f"Application has {len(expired_secrets)} expired client secrets",
                                 severity=RiskLevel.MEDIUM,
@@ -894,7 +894,7 @@ class Microsoft365Scanner(BaseScanner):
         
         except Exception as e:
             logger.error(f"Application security check failed: {str(e)}")
-            findings.append(SecurityFinding(
+            findings.append(ScanResult(
                 title="Application Security Check Failed",
                 description=f"Unable to verify application security: {str(e)}",
                 severity=RiskLevel.LOW,
@@ -904,7 +904,7 @@ class Microsoft365Scanner(BaseScanner):
         
         return findings
     
-    async def _scan_sharepoint(self) -> List[SecurityFinding]:
+    async def _scan_sharepoint(self) -> List[ScanResult]:
         """Scan SharePoint Online security configuration"""
         findings = []
         
@@ -917,7 +917,7 @@ class Microsoft365Scanner(BaseScanner):
             # Note: SharePoint admin settings require specific permissions
             # This is a simplified implementation
             
-            findings.append(SecurityFinding(
+            findings.append(ScanResult(
                 title="SharePoint Security Review Required",
                 description="SharePoint Online security settings should be reviewed manually",
                 severity=RiskLevel.LOW,
@@ -930,7 +930,7 @@ class Microsoft365Scanner(BaseScanner):
             
         except Exception as e:
             logger.error(f"SharePoint scan failed: {str(e)}")
-            findings.append(SecurityFinding(
+            findings.append(ScanResult(
                 title="SharePoint Scan Error",
                 description=f"Failed to complete SharePoint security scan: {str(e)}",
                 severity=RiskLevel.LOW,
@@ -940,7 +940,7 @@ class Microsoft365Scanner(BaseScanner):
         
         return findings
     
-    async def _scan_teams(self) -> List[SecurityFinding]:
+    async def _scan_teams(self) -> List[ScanResult]:
         """Scan Microsoft Teams security configuration"""
         findings = []
         
@@ -950,7 +950,7 @@ class Microsoft365Scanner(BaseScanner):
             # Teams settings would require Teams-specific Graph API endpoints
             # This is a placeholder implementation
             
-            findings.append(SecurityFinding(
+            findings.append(ScanResult(
                 title="Teams Security Review Required",
                 description="Microsoft Teams security settings should be reviewed",
                 severity=RiskLevel.LOW,
@@ -963,7 +963,7 @@ class Microsoft365Scanner(BaseScanner):
             
         except Exception as e:
             logger.error(f"Teams scan failed: {str(e)}")
-            findings.append(SecurityFinding(
+            findings.append(ScanResult(
                 title="Teams Scan Error",
                 description=f"Failed to complete Teams security scan: {str(e)}",
                 severity=RiskLevel.LOW,
@@ -973,7 +973,7 @@ class Microsoft365Scanner(BaseScanner):
         
         return findings
     
-    async def _scan_exchange(self) -> List[SecurityFinding]:
+    async def _scan_exchange(self) -> List[ScanResult]:
         """Scan Exchange Online security configuration"""
         findings = []
         
@@ -983,7 +983,7 @@ class Microsoft365Scanner(BaseScanner):
             # Exchange settings would require Exchange-specific Graph API endpoints
             # This is a placeholder implementation
             
-            findings.append(SecurityFinding(
+            findings.append(ScanResult(
                 title="Exchange Security Review Required",
                 description="Exchange Online security settings should be reviewed",
                 severity=RiskLevel.LOW,
@@ -996,7 +996,7 @@ class Microsoft365Scanner(BaseScanner):
             
         except Exception as e:
             logger.error(f"Exchange scan failed: {str(e)}")
-            findings.append(SecurityFinding(
+            findings.append(ScanResult(
                 title="Exchange Scan Error",
                 description=f"Failed to complete Exchange security scan: {str(e)}",
                 severity=RiskLevel.LOW,
@@ -1052,7 +1052,7 @@ class Microsoft365Scanner(BaseScanner):
             
         return {}
     
-    def _count_by_severity(self, findings: List[SecurityFinding]) -> Dict[str, int]:
+    def _count_by_severity(self, findings: List[ScanResult]) -> Dict[str, int]:
         """Count findings by severity level"""
         counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
         

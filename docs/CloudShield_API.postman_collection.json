@@ -1,0 +1,438 @@
+{
+  "info": {
+    "name": "CloudShield API",
+    "description": "Complete API collection for CloudShield SaaS Security Configuration Analyzer",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://api.cloudshield.io/v1",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"SecurePassword123!\",\n  \"full_name\": \"John Doe\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.environment.set(\"access_token\", jsonData.access_token);",
+                  "pm.environment.set(\"refresh_token\", jsonData.refresh_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"SecurePassword123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "refresh"]
+            }
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "me"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Integrations",
+      "item": [
+        {
+          "name": "List Integrations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/integrations",
+              "host": ["{{base_url}}"],
+              "path": ["integrations"]
+            }
+          }
+        },
+        {
+          "name": "Get Integration",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/integrations/:id",
+              "host": ["{{base_url}}"],
+              "path": ["integrations", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Connect Google Workspace",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/integrations/connect/google_workspace",
+              "host": ["{{base_url}}"],
+              "path": ["integrations", "connect", "google_workspace"]
+            }
+          }
+        },
+        {
+          "name": "Connect Microsoft 365",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/integrations/connect/microsoft_365",
+              "host": ["{{base_url}}"],
+              "path": ["integrations", "connect", "microsoft_365"]
+            }
+          }
+        },
+        {
+          "name": "Delete Integration",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/integrations/:id",
+              "host": ["{{base_url}}"],
+              "path": ["integrations", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Scanning",
+      "item": [
+        {
+          "name": "Start Scan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"integration_id\": 1,\n  \"scan_type\": \"full\",\n  \"options\": {\n    \"deep_scan\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/scans/start",
+              "host": ["{{base_url}}"],
+              "path": ["scans", "start"]
+            }
+          }
+        },
+        {
+          "name": "Get Scan Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/scans/:scan_id",
+              "host": ["{{base_url}}"],
+              "path": ["scans", ":scan_id"],
+              "variable": [
+                {
+                  "key": "scan_id",
+                  "value": "scan_abc123"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Scans",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/scans?limit=20&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["scans"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Findings",
+      "item": [
+        {
+          "name": "List Findings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/findings?risk_level=critical&status=open",
+              "host": ["{{base_url}}"],
+              "path": ["findings"],
+              "query": [
+                {
+                  "key": "risk_level",
+                  "value": "critical"
+                },
+                {
+                  "key": "status",
+                  "value": "open"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Finding",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/findings/:id",
+              "host": ["{{base_url}}"],
+              "path": ["findings", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "123"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Finding Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\",\n  \"resolution_notes\": \"Issue has been fixed\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/findings/:id",
+              "host": ["{{base_url}}"],
+              "path": ["findings", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "123"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Alerts",
+      "item": [
+        {
+          "name": "List Alerts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/alerts",
+              "host": ["{{base_url}}"],
+              "path": ["alerts"]
+            }
+          }
+        },
+        {
+          "name": "Create Alert Rule",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Critical Findings Alert\",\n  \"enabled\": true,\n  \"conditions\": {\n    \"risk_level\": [\"critical\"],\n    \"finding_types\": [\"mfa_disabled\"]\n  },\n  \"channels\": [\n    {\n      \"type\": \"email\",\n      \"recipients\": [\"security@example.com\"]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/alerts/rules",
+              "host": ["{{base_url}}"],
+              "path": ["alerts", "rules"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Get Overview",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dashboard/overview",
+              "host": ["{{base_url}}"],
+              "path": ["dashboard", "overview"]
+            }
+          }
+        },
+        {
+          "name": "Get Risk Trends",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dashboard/risk-trends?period=30d",
+              "host": ["{{base_url}}"],
+              "path": ["dashboard", "risk-trends"],
+              "query": [
+                {
+                  "key": "period",
+                  "value": "30d"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

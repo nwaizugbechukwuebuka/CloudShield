@@ -22,11 +22,11 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy import select, update, delete, and_, or_, desc, func
 from sqlalchemy.sql import text
 
-from ..database import get_async_db
+from ..database import get_db
 from ..models.findings import Finding, Scan, ScanStatus, RiskLevel
 from ..models.integration import Integration, IntegrationType
 from ..models.user import User
-from ..utils.config import get_settings
+from ..utils.config import settings
 from ..utils.logger import get_logger
 from .alert_services import get_alert_service, AlertSeverity, AlertCategory
 
@@ -37,7 +37,7 @@ from ...scanner.microsoft_365 import Microsoft365Scanner
 from ...scanner.slack import SlackScanner
 from ...scanner.notion import NotionScanner
 
-settings = get_settings()
+
 logger = get_logger(__name__)
 
 
@@ -273,7 +273,7 @@ class CloudShieldScanService:
                          user_id: Optional[str] = None) -> Optional[str]:
         """Create and queue a new security scan"""
         try:
-            async with get_async_db() as db:
+            with next(get_db()) as db:
                 # Validate integration exists
                 integration_result = await db.execute(
                     select(Integration).where(Integration.id == integration_id)
@@ -369,7 +369,7 @@ class CloudShieldScanService:
     async def execute_scan(self, scan_id: str) -> Optional[ScanResult]:
         """Execute a queued security scan"""
         try:
-            async with get_async_db() as db:
+            with next(get_db()) as db:
                 # Get scan details
                 result = await db.execute(
                     select(Scan)
@@ -553,7 +553,7 @@ class CloudShieldScanService:
             logger.error(f"Google Workspace scan failed: {str(e)}")
             raise
     
-    async def _scan_microsoft_365(self, scanner: Microsoft365Scanner, config: Dict) -> List[Dict]:
+    async def _scan_microsoft_365(self, scanner: Any, config: Dict) -> List[Dict]:
         """Execute Microsoft 365 security scan"""
         try:
             findings = []
@@ -843,7 +843,7 @@ class CloudShieldScanService:
                 "SOC2": len([f for f in findings if any('SOC2' in ci for ci in f.get('compliance_impact', []))]),
                 "GDPR": len([f for f in findings if any('GDPR' in ci for ci in f.get('compliance_impact', []))]),
                 "HIPAA": len([f for f in findings if any('HIPAA' in ci for ci in f.get('compliance_impact', []))]),
-                "ISO27001": len([f for f in findings if any('ISO27001' in ci for ci in f.get('compliance_impact', [])])
+                "ISO27001": len([f for f in findings if any('ISO27001' in ci for ci in f.get('compliance_impact', []))])
             },
             "risk_score": self._calculate_risk_score(findings)
         }
@@ -1044,7 +1044,7 @@ class CloudShieldScanService:
     async def _save_scan_results(self, scan_result: ScanResult):
         """Save scan results to database"""
         try:
-            async with get_async_db() as db:
+            with next(get_db()) as db:
                 # Update scan record
                 await db.execute(
                     update(Scan)
@@ -1156,7 +1156,7 @@ class CloudShieldScanService:
                                  error_message: Optional[str] = None):
         """Update scan status in database"""
         try:
-            async with get_async_db() as db:
+            with next(get_db()) as db:
                 update_values = {
                     'status': status.value,
                     'updated_at': datetime.utcnow()
@@ -1185,7 +1185,7 @@ class CloudShieldScanService:
     async def get_scan_status(self, scan_id: str) -> Optional[Dict]:
         """Get current status of a scan"""
         try:
-            async with get_async_db() as db:
+            with next(get_db()) as db:
                 result = await db.execute(
                     select(Scan).where(Scan.id == scan_id)
                 )
@@ -1223,7 +1223,7 @@ class CloudShieldScanService:
     async def cancel_scan(self, scan_id: str) -> bool:
         """Cancel a running or queued scan"""
         try:
-            async with get_async_db() as db:
+            with next(get_db()) as db:
                 result = await db.execute(
                     select(Scan).where(Scan.id == scan_id)
                 )
@@ -1256,7 +1256,7 @@ class CloudShieldScanService:
                                          limit: int = 50) -> List[Dict]:
         """Get scan history for an integration"""
         try:
-            async with get_async_db() as db:
+            with next(get_db()) as db:
                 result = await db.execute(
                     select(Scan)
                     .where(Scan.integration_id == integration_id)

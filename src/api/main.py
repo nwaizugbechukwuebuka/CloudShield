@@ -2,24 +2,57 @@
 CloudShield SaaS Security Configuration Analyzer
 FastAPI Application Entry Point
 """
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer
+from starlette.middleware.sessions import SessionMiddleware
 import time
 import uvicorn
+import asyncio
+from contextlib import asynccontextmanager
 
 # Import routes
-from .routes import auth, integrations, scan
+from .routes import auth, integrations, scan, alerts, findings, health
+from .routes.dashboard import router as dashboard_router
+from .routes.users import router as users_router
 
 # Import utilities
 from .utils.config import settings
 from .utils.logger import configure_logging, get_logger, security_logger
-from .database import create_tables
+from .utils.rate_limiting import RateLimiter
+from .utils.security import SecurityMiddleware
+from .database import create_tables, get_db
+from .models import Base
+from sqlalchemy.ext.asyncio import create_async_engine
+
+# Import monitoring
+from .utils.monitoring import PrometheusMiddleware
+from .utils.sentry_integration import initialize_sentry
+from .utils.advanced_logging import configure_advanced_logging, get_enhanced_logger
+from prometheus_client import make_asgi_app
+
+# Import security middleware
+from .middleware.security_middleware import setup_security_middleware
 
 # Configure logging
 configure_logging(debug=settings.DEBUG)
+configure_advanced_logging(
+    log_level='DEBUG' if settings.DEBUG else 'INFO',
+    json_logs=not settings.DEBUG,
+    log_file='logs/cloudshield.log' if not settings.DEBUG else None
+)
 logger = get_logger(__name__)
+enhanced_logger = get_enhanced_logger(__name__)
+
+# Initialize Sentry for error tracking
+initialize_sentry(
+    environment='development' if settings.DEBUG else 'production',
+    release=settings.APP_VERSION,
+    traces_sample_rate=0.1 if not settings.DEBUG else 1.0
+)
 
 # Create FastAPI app
 app = FastAPI(
@@ -45,6 +78,15 @@ if not settings.DEBUG:
         TrustedHostMiddleware,
         allowed_hosts=["localhost", "127.0.0.1", "*.cloudshield.com"]
     )
+
+# Add Prometheus monitoring middleware
+app.add_middleware(PrometheusMiddleware)
+
+# Add GZip compression
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Setup comprehensive security middleware (WAF-like protection, security headers, etc.)
+setup_security_middleware(app)
 
 
 # Request logging middleware
@@ -136,8 +178,17 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 # Include routers
 app.include_router(auth.router)
+app.include_router(users_router)
 app.include_router(integrations.router)
 app.include_router(scan.router)
+app.include_router(alerts.router)
+app.include_router(findings.router)
+app.include_router(health.router)
+app.include_router(dashboard_router)
+
+# Mount Prometheus metrics endpoint
+metrics_app = make_asgi_app()
+app.mount("/metrics", metrics_app)
 
 
 # Root endpoint

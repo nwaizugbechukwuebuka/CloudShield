@@ -524,7 +524,7 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 *Demonstrating advanced SaaS security engineering, full-stack development expertise, and production-ready software architecture.*
 
-[![GitHub](https://img.shields.io/badge/GitHub-nwaizugbechukwuebuka-181717.svg?style=flat&logo=github)](https://github.com/nwaizugbechukwuebuka)
+[![GitHub](https://img.shields.io/badge/GitHub-nwaizugbechukwuebuka-181717.svg?style=flat&logo=github)](https://github.com/nwaizugbechukwuebuka/CloudShield)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0077b5.svg?style=flat&logo=linkedin)](https://www.linkedin.com/in/chukwuebuka-tobiloba-nwaizugbe/)
 
 **🛡️ CloudShield: Where SaaS Security Meets Innovation**

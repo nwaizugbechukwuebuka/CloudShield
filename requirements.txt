@@ -14,7 +14,7 @@ fastapi-cors==0.0.6
 # ==========================
 # Database
 # ==========================
-sqlalchemy==2.0.23
+sqlalchemy==1.4.52
 alembic==1.12.1
 psycopg2-binary==2.9.9
 redis==5.0.1

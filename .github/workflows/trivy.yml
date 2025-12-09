@@ -7,59 +7,42 @@ name: Trivy Container Scan
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
   schedule:
-    - cron: '28 20 * * 5' # every Friday at 20:28 UTC
+    - cron: "28 20 * * 5"
 
 permissions:
   contents: read
+  security-events: write
 
 jobs:
-  scan:
-    permissions:
-      contents: read # for actions/checkout to fetch code
-      security-events: write # for upload-sarif
-      actions: read # required for private repos
-    name: Trivy Scan
+  trivy:
+    name: Run Trivy Vulnerability Scan
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --- Backend Docker Build & Scan ---
-      - name: Build backend Docker image
+      - name: Build Docker image (backend)
         run: |
-          docker build -f deployment/Dockerfile -t cloudshield-api:${{ github.sha }} deployment/
+          docker build \
+            -f deployment/Dockerfile \
+            -t cloudshield-api:${{ github.sha }} \
+            .
 
-      - name: Trivy scan backend image
+      - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'cloudshield-api:${{ github.sha }}'
-          format: 'sarif'
-          output: 'trivy-backend-results.sarif'
-          severity: 'CRITICAL,HIGH'
+          image-ref: "cloudshield-api:${{ github.sha }}"
+          format: "template"
+          template: "@/contrib/sarif.tpl"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
 
-      - name: Upload backend Trivy results
+      - name: Upload Trivy results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: 'trivy-backend-results.sarif'
-
-      # --- Frontend Docker Build & Scan ---
-      - name: Build frontend Docker image
-        run: |
-          docker build -f deployment/frontend.Dockerfile -t cloudshield-frontend:${{ github.sha }} deployment/
-
-      - name: Trivy scan frontend image
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: 'cloudshield-frontend:${{ github.sha }}'
-          format: 'sarif'
-          output: 'trivy-frontend-results.sarif'
-          severity: 'CRITICAL,HIGH'
-
-      - name: Upload frontend Trivy results
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: 'trivy-frontend-results.sarif'
+          sarif_file: "trivy-results.sarif"

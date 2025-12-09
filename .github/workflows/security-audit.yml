@@ -1,6 +1,10 @@
 name: Security Audit
 
 on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
   schedule:
     # Run every Monday at 2 AM UTC
     - cron: '0 2 * * 1'
@@ -21,6 +25,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Python dependency audit
         run: |
@@ -57,6 +63,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
@@ -67,6 +75,7 @@ jobs:
         uses: github/codeql-action/autobuild@v3
 
       - name: Perform CodeQL analysis
+        if: github.repository == github.repository_owner + '/CloudShield'
         uses: github/codeql-action/analyze@v3
 
       - name: Run Semgrep
@@ -89,6 +98,7 @@ jobs:
         with:
           fetch-depth: 0
 
+      # TruffleHog scan for pull requests (diff scan)
       - name: TruffleHog scan for pull requests
         if: github.event_name == 'pull_request'
         uses: trufflesecurity/trufflehog@main
@@ -97,7 +107,8 @@ jobs:
           head: ${{ github.event.pull_request.head.sha }}
           base: ${{ github.event.pull_request.base.sha }}
 
-      - name: TruffleHog scan for pushes
+      # TruffleHog scan for pushes or scheduled workflows (full repo)
+      - name: TruffleHog scan for pushes or scheduled runs
         if: github.event_name != 'pull_request'
         uses: trufflesecurity/trufflehog@main
         with:
@@ -113,12 +124,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # Build backend image
+      - name: Debug repo structure
+        run: |
+          echo "Current directory: $(pwd)"
+          ls -R
+
+      # Build backend Docker image
       - name: Build backend Docker image
         run: docker build -f deployment/Dockerfile -t cloudshield/api:scan .
 
-      # Build frontend image (optional)
+      # Build frontend Docker image (optional)
       - name: Build frontend Docker image
         if: ${{ fileExists('deployment/frontend.Dockerfile') }}
         run: docker build -f deployment/frontend.Dockerfile -t cloudshield/frontend:scan .
@@ -144,16 +162,15 @@ jobs:
           exit-code: 1
           ignore-unfixed: true
 
-      # Upload backend scan results
+      # Upload backend SARIF results
       - name: Upload backend SARIF results
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-backend-results.sarif
 
-      # Upload frontend scan results
+      # Upload frontend SARIF results
       - name: Upload frontend SARIF results
         if: ${{ fileExists('deployment/frontend.Dockerfile') }}
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-frontend-results.sarif
-

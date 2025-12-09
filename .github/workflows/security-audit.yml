@@ -6,7 +6,15 @@ on:
     - cron: '0 2 * * 1'
   workflow_dispatch:
 
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
 jobs:
+  ##########################################################
+  # DEPENDENCY SECURITY AUDIT
+  ##########################################################
   dependency-audit:
     name: Dependency Security Audit
     runs-on: ubuntu-latest
@@ -36,9 +44,16 @@ jobs:
             safety-report.json
             src/frontend/npm-audit-report.json
 
+  ##########################################################
+  # STATIC APPLICATION SECURITY TESTING (SAST)
+  ##########################################################
   sast-scan:
     name: Static Application Security Testing
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, javascript]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -46,7 +61,10 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          languages: python, javascript
+          languages: ${{ matrix.language }}
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v3
@@ -59,6 +77,9 @@ jobs:
             p/secrets
             p/owasp-top-ten
 
+  ##########################################################
+  # SECRETS DETECTION
+  ##########################################################
   secrets-scan:
     name: Secrets Detection
     runs-on: ubuntu-latest
@@ -68,13 +89,24 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: TruffleHog secrets scan
+      - name: TruffleHog scan for pull requests
+        if: github.event_name == 'pull_request'
         uses: trufflesecurity/trufflehog@main
         with:
-          path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
+          github_token: ${{ github.token }}
+          head: ${{ github.event.pull_request.head.sha }}
+          base: ${{ github.event.pull_request.base.sha }}
 
+      - name: TruffleHog scan for pushes
+        if: github.event_name != 'pull_request'
+        uses: trufflesecurity/trufflehog@main
+        with:
+          github_token: ${{ github.token }}
+          path: .
+
+  ##########################################################
+  # CONTAINER SECURITY SCAN
+  ##########################################################
   container-scan:
     name: Container Security Scan
     runs-on: ubuntu-latest
@@ -82,31 +114,46 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build backend and frontend images
-        run: |
-          docker build -f deployment/Dockerfile -t cloudshield/api:scan .
-          docker build -f deployment/frontend.Dockerfile -t cloudshield/frontend:scan .
+      # Build backend image
+      - name: Build backend Docker image
+        run: docker build -f deployment/Dockerfile -t cloudshield/api:scan .
 
-      - name: Run Trivy scan on backend image
-        uses: aquasecurity/trivy-action@master
+      # Build frontend image (optional)
+      - name: Build frontend Docker image
+        if: ${{ fileExists('deployment/frontend.Dockerfile') }}
+        run: docker build -f deployment/frontend.Dockerfile -t cloudshield/frontend:scan .
+
+      # Scan backend with Trivy
+      - name: Run Trivy scan on backend
+        uses: aquasecurity/trivy-action@v1
         with:
           image-ref: cloudshield/api:scan
           format: sarif
           output: trivy-backend-results.sarif
+          exit-code: 1
+          ignore-unfixed: true
 
-      - name: Run Trivy scan on frontend image
-        uses: aquasecurity/trivy-action@master
+      # Scan frontend with Trivy
+      - name: Run Trivy scan on frontend
+        if: ${{ fileExists('deployment/frontend.Dockerfile') }}
+        uses: aquasecurity/trivy-action@v1
         with:
           image-ref: cloudshield/frontend:scan
           format: sarif
           output: trivy-frontend-results.sarif
+          exit-code: 1
+          ignore-unfixed: true
 
-      - name: Upload backend scan results
+      # Upload backend scan results
+      - name: Upload backend SARIF results
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-backend-results.sarif
 
-      - name: Upload frontend scan results
+      # Upload frontend scan results
+      - name: Upload frontend SARIF results
+        if: ${{ fileExists('deployment/frontend.Dockerfile') }}
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-frontend-results.sarif
+

@@ -1,57 +1,63 @@
-# Multi-stage Docker build for CloudShield Backend
-FROM python:3.11-slim as builder
+# ============================
+# CloudShield Backend Dockerfile
+# Multi-Stage Production Build
+# ============================
 
-# Install system dependencies
+# -------- BUILDER STAGE --------
+FROM python:3.11-slim AS builder
+
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpq-dev \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
+# Set work directory
 WORKDIR /app
 
-# Copy requirements and install dependencies
-COPY requirements.txt .
+# Copy only requirements first for caching
+COPY ../requirements.txt .
+
+# Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Production stage
+# -------- PRODUCTION STAGE --------
 FROM python:3.11-slim
 
-# Install runtime dependencies
+# Install runtime dependencies only
 RUN apt-get update && apt-get install -y \
     libpq5 \
     curl \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --shell /bin/bash app
 
-# Set working directory
 WORKDIR /app
 
-# Copy Python dependencies from builder stage
+# Copy installed packages from builder
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy application code
-COPY . .
+# Copy backend application code
+# (Dockerfile lives in deployment/, so go up one level)
+COPY ../src ./src
+COPY ../requirements.txt .
 
-# Create necessary directories
+# Create logs directory
 RUN mkdir -p /app/logs && \
     chown -R app:app /app
 
-# Switch to non-root user
+# Run as non-root user
 USER app
 
-# Set Python path
 ENV PYTHONPATH=/app
 
-# Health check
+# Health check endpoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Expose port
 EXPOSE 8000
 
-# Default command
+# Start the API
 CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

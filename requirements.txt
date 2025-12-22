@@ -109,7 +109,7 @@ bandit==1.7.5
 # File Handling & Data Processing
 # ==========================
 aiofiles==23.2.1
-marshmallow==3.20.2
+marshmallow==3.26.2
 jsonschema==4.20.0
 
 # ==========================
